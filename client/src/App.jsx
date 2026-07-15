@@ -1,10 +1,12 @@
+import { lazy, Suspense } from "react";
 import { Link, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { useAuth } from "./context/AuthContext.jsx";
-import Auth from "./pages/Auth.jsx";
-import Dashboard from "./pages/Dashboard.jsx";
-import InvoiceDetail from "./pages/InvoiceDetail.jsx";
-import Invoices from "./pages/Invoices.jsx";
-import PaymentResult from "./pages/PaymentResult.jsx";
+
+const Auth = lazy(() => import("./pages/Auth.jsx"));
+const Dashboard = lazy(() => import("./pages/Dashboard.jsx"));
+const InvoiceDetail = lazy(() => import("./pages/InvoiceDetail.jsx"));
+const Invoices = lazy(() => import("./pages/Invoices.jsx"));
+const PaymentResult = lazy(() => import("./pages/PaymentResult.jsx"));
 
 function Navbar() {
   const { user, logout } = useAuth();
@@ -51,6 +53,10 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
+function PageFallback() {
+  return <div className="p-10">Loading…</div>;
+}
+
 export default function App() {
   const { user } = useAuth();
 
@@ -58,50 +64,54 @@ export default function App() {
     <div className="min-h-screen">
       <Navbar />
 
-      <Routes>
-        <Route path="/auth" element={<Auth />} />
+      <main>
+        <Suspense fallback={<PageFallback />}>
+          <Routes>
+            <Route path="/auth" element={<Auth />} />
 
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          }
-        />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              }
+            />
 
-        <Route
-          path="/invoices"
-          element={
-            <ProtectedRoute>
-              <Invoices />
-            </ProtectedRoute>
-          }
-        />
+            <Route
+              path="/invoices"
+              element={
+                <ProtectedRoute>
+                  <Invoices />
+                </ProtectedRoute>
+              }
+            />
 
-        <Route
-          path="/invoices/:id"
-          element={
-            <ProtectedRoute>
-              <InvoiceDetail />
-            </ProtectedRoute>
-          }
-        />
+            <Route
+              path="/invoices/:id"
+              element={
+                <ProtectedRoute>
+                  <InvoiceDetail />
+                </ProtectedRoute>
+              }
+            />
 
-        <Route path="/payment/result" element={<PaymentResult />} />
+            <Route path="/payment/result" element={<PaymentResult />} />
 
-        {/* Root route */}
-        <Route
-          path="/"
-          element={<Navigate to={user ? "/dashboard" : "/auth"} replace />}
-        />
+            {/* Root route */}
+            <Route
+              path="/"
+              element={<Navigate to={user ? "/dashboard" : "/auth"} replace />}
+            />
 
-        {/* Catch all unknown routes */}
-        <Route
-          path="*"
-          element={<Navigate to={user ? "/dashboard" : "/auth"} replace />}
-        />
-      </Routes>
+            {/* Catch all unknown routes */}
+            <Route
+              path="*"
+              element={<Navigate to={user ? "/dashboard" : "/auth"} replace />}
+            />
+          </Routes>
+        </Suspense>
+      </main>
     </div>
   );
 }
