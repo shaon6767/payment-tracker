@@ -11,9 +11,10 @@ export default function Auth() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (user) navigate("/dashboard");
-  }, [user]);
-
+    if (user) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [user, navigate]);
   const submit = async (e) => {
     e.preventDefault();
     setError("");

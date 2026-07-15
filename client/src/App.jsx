@@ -41,16 +41,26 @@ function Navbar() {
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="p-10">Loading…</div>;
-  return user ? <>{children}</> : <Navigate to="/auth" replace />;
+
+  if (loading) {
+    return <div className="p-10">Loading...</div>;
+  }
+  if (!user) {
+    return <Navigate to="/auth" replace />;
+  }
+  return children;
 }
 
 export default function App() {
+  const { user } = useAuth();
+
   return (
     <div className="min-h-screen">
       <Navbar />
+
       <Routes>
         <Route path="/auth" element={<Auth />} />
+
         <Route
           path="/dashboard"
           element={
@@ -59,6 +69,7 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
         <Route
           path="/invoices"
           element={
@@ -67,6 +78,7 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
         <Route
           path="/invoices/:id"
           element={
@@ -75,8 +87,20 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
         <Route path="/payment/result" element={<PaymentResult />} />
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+
+        {/* Root route */}
+        <Route
+          path="/"
+          element={<Navigate to={user ? "/dashboard" : "/auth"} replace />}
+        />
+
+        {/* Catch all unknown routes */}
+        <Route
+          path="*"
+          element={<Navigate to={user ? "/dashboard" : "/auth"} replace />}
+        />
       </Routes>
     </div>
   );
