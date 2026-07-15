@@ -23,9 +23,9 @@ export default function Dashboard() {
   };
 
   const cards = [
-    { label: "Total Invoices", value: stats.total, color: "bg-blue-500" },
-    { label: "Paid", value: stats.paid, color: "bg-green-500" },
-    { label: "Unpaid", value: stats.unpaid, color: "bg-amber-500" },
+    { label: "Total Invoices", value: stats.total, color: "bg-blue-700" },
+    { label: "Paid", value: stats.paid, color: "bg-green-700" },
+    { label: "Unpaid", value: stats.unpaid, color: "bg-amber-700" },
     { label: "Revenue", value: `৳${stats.revenue}`, color: "bg-indigo-500" },
   ];
 
