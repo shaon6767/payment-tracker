@@ -45,7 +45,7 @@ export default function Dashboard() {
         {cards.map((c) => (
           <div
             key={c.label}
-            className="bg-white p-5 rounded-xl shadow border border-slate-200"
+            className="bg-white p-5 rounded-sm shadow border border-slate-200"
           >
             <div
               className={`inline-block px-2 py-1 rounded text-white text-xs ${c.color}`}
@@ -57,7 +57,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div className="bg-white rounded-xl shadow border border-slate-200 p-5">
+      <div className="bg-white rounded-md shadow border border-slate-200 p-5">
         <h2 className="font-semibold mb-3">Recent Invoices</h2>
         {loading ? (
           <p>Loading…</p>
