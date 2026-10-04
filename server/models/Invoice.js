@@ -70,6 +70,8 @@ const invoiceSchema = new mongoose.Schema(
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } },
 );
 
+invoiceSchema.index({ user: 1, createdAt: -1, _id: -1 });
+
 invoiceSchema.virtual("amount").get(function () {
   return formatMinorAmount(this.amountMinor);
 });
