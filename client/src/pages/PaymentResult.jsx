@@ -10,8 +10,6 @@ export default function PaymentResult() {
   const isSuccess =
     status === "valid" || status === "success" || status === "paid";
   const isCancelled = status === "cancelled" || status === "cancel";
-  const isFailed = !isSuccess && !isCancelled;
-
   const config = isSuccess
     ? {
         title: "Payment Successful",

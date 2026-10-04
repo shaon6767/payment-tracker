@@ -1,26 +1,34 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import api from "../api/axios";
 
 export default function InvoiceDetail() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const [invoice, setInvoice] = useState(null);
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState("");
 
-  const load = () => {
+  useEffect(() => {
+    let active = true;
+
     setLoading(true);
+    setError("");
     api
       .get(`/invoices/${id}`)
-      .then(({ data }) => setInvoice(data))
-      .catch((e) => setError(e?.response?.data?.message || "Failed to load"))
-      .finally(() => setLoading(false));
-  };
+      .then(({ data }) => {
+        if (active) setInvoice(data);
+      })
+      .catch((e) => {
+        if (active) setError(e?.response?.data?.message || "Failed to load");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
 
-  useEffect(() => {
-    load();
+    return () => {
+      active = false;
+    };
   }, [id]);
 
   const payNow = async () => {

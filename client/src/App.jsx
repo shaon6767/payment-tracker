@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from "react";
 import { Link, Navigate, Route, Routes, useNavigate } from "react-router-dom";
-import { useAuth } from "./context/AuthContext.jsx";
+import { useAuth } from "./context/useAuth.js";
 
 const Auth = lazy(() => import("./pages/Auth.jsx"));
 const Dashboard = lazy(() => import("./pages/Dashboard.jsx"));
