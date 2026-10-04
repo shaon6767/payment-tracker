@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import mongoose from "mongoose";
 import SSLCommerzPayment from "sslcommerz-lts";
 import Invoice from "../models/Invoice.js";
@@ -31,6 +31,51 @@ function callbackPayload(req) {
   const values = { ...req.query, ...(req.body || {}) };
   return Object.fromEntries(
     Object.entries(values).filter(([, value]) => typeof value === "string"),
+  );
+}
+
+function paymentSignature(invoice, tranId, amountMinor) {
+  return createHmac("sha256", process.env.JWT_SECRET)
+    .update(
+      `${invoice._id}:${invoice.user}:${tranId}:${amountMinor}`,
+    )
+    .digest("hex");
+}
+
+function hasValidPaymentSignature(payload, invoice) {
+  if (typeof payload.value_c !== "string") return false;
+  const expected = Buffer.from(
+    paymentSignature(
+      invoice,
+      invoice.activePayment.tranId,
+      invoice.activePayment.amountMinor,
+    ),
+    "hex",
+  );
+  const provided = Buffer.from(payload.value_c, "hex");
+  return provided.length === expected.length && timingSafeEqual(provided, expected);
+}
+
+async function releaseCallbackReservation(payload) {
+  const tranId = payload.tran_id?.trim();
+  if (!tranId) return;
+  const invoice = await Invoice.findOne({ "activePayment.tranId": tranId });
+  if (
+    !invoice ||
+    payload.value_a !== invoice._id.toString() ||
+    payload.value_b !== invoice.user.toString() ||
+    !hasValidPaymentSignature(payload, invoice)
+  ) {
+    return;
+  }
+
+  await Invoice.updateOne(
+    {
+      _id: invoice._id,
+      "activePayment.tranId": tranId,
+      pendingAmountMinor: invoice.activePayment.amountMinor,
+    },
+    { $set: { pendingAmountMinor: 0, activePayment: null } },
   );
 }
 
@@ -153,6 +198,7 @@ export async function initiatePayment(req, res) {
       cus_phone: "0000000000",
       value_a: invoice._id.toString(),
       value_b: req.user._id.toString(),
+      value_c: paymentSignature(invoice, tranId, amountMinor),
     };
 
     const response = await sslcz.init(data, false);
@@ -210,7 +256,8 @@ async function applyPayment(payload) {
   if (!invoice) return { ok: false };
   if (
     payload.value_a !== invoice._id.toString() ||
-    payload.value_b !== invoice.user.toString()
+    payload.value_b !== invoice.user.toString() ||
+    !hasValidPaymentSignature(payload, invoice)
   ) {
     return { ok: false };
   }
@@ -223,7 +270,12 @@ async function applyPayment(payload) {
     verifiedAmount !== invoice.activePayment.amountMinor ||
     String(verified.currency || "").toUpperCase() !== invoice.currency ||
     verified.value_a !== invoice._id.toString() ||
-    verified.value_b !== invoice.user.toString()
+    verified.value_b !== invoice.user.toString() ||
+    verified.value_c !== paymentSignature(
+      invoice,
+      tranId,
+      invoice.activePayment.amountMinor,
+    )
   ) {
     return { ok: false };
   }
@@ -266,29 +318,23 @@ async function applyPayment(payload) {
 
 export async function paymentSuccess(req, res) {
   const payload = callbackPayload(req);
-  try {
-    const result = await applyPayment(payload);
-    redirectToResult(
-      res,
-      result.ok ? "confirmed" : "unconfirmed",
-      result.invoiceId || payload.value_a,
-    );
-  } catch (error) {
-    console.error(
-      "Payment success callback failed:",
-      error instanceof HttpError ? error.message : "External validation request failed",
-    );
-    redirectToResult(res, "unconfirmed", payload.value_a);
-  }
+  const result = await applyPayment(payload);
+  redirectToResult(
+    res,
+    result.ok ? "confirmed" : "unconfirmed",
+    result.invoiceId || payload.value_a,
+  );
 }
 
-export function paymentFail(req, res) {
+export async function paymentFail(req, res) {
   const payload = callbackPayload(req);
+  await releaseCallbackReservation(payload);
   redirectToResult(res, "failed", payload.value_a);
 }
 
-export function paymentCancel(req, res) {
+export async function paymentCancel(req, res) {
   const payload = callbackPayload(req);
+  await releaseCallbackReservation(payload);
   redirectToResult(res, "cancelled", payload.value_a);
 }
 

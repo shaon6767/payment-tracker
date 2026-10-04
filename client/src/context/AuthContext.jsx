@@ -12,7 +12,10 @@ export function AuthProvider({ children }) {
     if (stored && token) {
       try {
         setUser(JSON.parse(stored));
-      } catch {}
+      } catch {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+      }
     }
     setLoading(false);
   }, []);
