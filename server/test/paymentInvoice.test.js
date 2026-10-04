@@ -7,7 +7,6 @@ import {
 } from "../utils/invoiceAccounting.js";
 import { formatMinorAmount, parseAmountMinor } from "../utils/money.js";
 import { parsePagination } from "../utils/pagination.js";
-import { getBenchmarkConfig } from "../utils/benchmarkConfig.js";
 import {
   validateInvoiceInput,
   validatePaymentInput,
@@ -66,26 +65,6 @@ test("pagination rejects malformed, excessive, and unknown query values", () => 
     { offset: "5" },
   ]) {
     assert.throws(() => parsePagination(query), { status: 400 });
-  }
-});
-
-test("Atlas benchmark accepts only its dedicated benchmark database", () => {
-  const config = getBenchmarkConfig({
-    BENCHMARK_MONGO_URI:
-      "mongodb+srv://user:pass@example.mongodb.net/payment_tracker_benchmark",
-  });
-  assert.equal(config.databaseName, "payment_tracker_benchmark");
-  assert.equal(config.invoiceCount, 2000);
-
-  for (const uri of [
-    undefined,
-    "mongodb+srv://user:pass@example.mongodb.net/payment_tracker",
-    "mongodb://127.0.0.1:27017/payment_tracker_benchmark",
-  ]) {
-    assert.throws(
-      () => getBenchmarkConfig({ BENCHMARK_MONGO_URI: uri }),
-      /dedicated Atlas benchmark database|Refusing to run/,
-    );
   }
 });
 

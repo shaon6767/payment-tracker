@@ -55,21 +55,6 @@ npm run build
 
 GitHub Actions runs these checks and builds the backend Docker image on pushes and pull requests.
 
-## Atlas invoice-list performance test
-
-The optional benchmark compares the real authenticated, paginated invoice endpoint with the previous-style unpaginated list query using synthetic records in an isolated Atlas database. It reports median requests per second, p50/p95 latency, and response sizes across repeated paired rounds. It does not call SSLCommerz.
-
-Create a dedicated database user with access only to `payment_tracker_benchmark`, and allow your current IP address in Atlas Network Access. In PowerShell, from `server`, set a connection string for that database in the current terminal session (URL-encode any special characters in the username or password):
-
-```powershell
-$env:BENCHMARK_MONGO_URI = "mongodb+srv://<benchmark-user>:<password>@<cluster-host>/payment_tracker_benchmark?retryWrites=true&w=majority"
-npm.cmd run benchmark:atlas
-```
-
-The script refuses non-Atlas URIs or any database name except `payment_tracker_benchmark`. By default it creates 2,000 temporary invoices and one temporary user, runs 5 paired rounds, then deletes only the temporary user and that user's invoices. Atlas data transfer and cluster usage still apply. Never use the production database URI. Results depend on Atlas tier, network, cluster load, and dataset; report the measured median and include the setup conditions rather than describing it as a constant.
-
-To change the workload, set `BENCHMARK_INVOICE_COUNT` (maximum 10,000), `BENCHMARK_ROUNDS` (maximum 10), `BENCHMARK_REQUESTS_PER_ROUND` (maximum 50), or `BENCHMARK_CONCURRENCY` (maximum 10) in the same PowerShell session.
-
 ## Credential hygiene
 
 Never commit `.env` files. Credentials in the repository's prior Git history must be rotated; removing the current `.env` from tracking does not erase old commits. Coordinate any Git-history rewrite with other repository users.

@@ -7,8 +7,7 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "node --test",
-    "migrate:money": "node scripts/migrateInvoiceAmounts.js",
-    "benchmark:atlas": "node scripts/benchmarkAtlasInvoices.js"
+    "migrate:money": "node scripts/migrateInvoiceAmounts.js"
   },
   "keywords": [],
   "author": "",
