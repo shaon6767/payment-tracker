@@ -2,19 +2,26 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../api/axios";
 import InvoiceForm from "../components/InvoiceForm.jsx";
+import { formatMinorAmount } from "../utils/money.js";
 
 export default function Invoices() {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
-  const load = () => {
+  const load = async () => {
     setLoading(true);
-    api
-      .get("/invoices")
-      .then(({ data }) => setInvoices(data))
-      .finally(() => setLoading(false));
+    setError("");
+    try {
+      const { data } = await api.get("/invoices");
+      setInvoices(data);
+    } catch (err) {
+      setError(err?.response?.data?.message || "Failed to load invoices");
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -26,7 +33,7 @@ export default function Invoices() {
     try {
       await api.post("/invoices", payload);
       setShowForm(false);
-      load();
+      await load();
     } catch (err) {
       alert(err?.response?.data?.message || "Failed to create invoice");
     } finally {
@@ -65,6 +72,8 @@ export default function Invoices() {
       <div className="bg-white rounded-xl shadow border border-slate-200 p-5">
         {loading ? (
           <p>Loading…</p>
+        ) : error ? (
+          <p className="text-red-600" role="alert">{error}</p>
         ) : invoices.length === 0 ? (
           <p className="text-slate-500 text-sm">No invoices yet.</p>
         ) : (
@@ -88,18 +97,16 @@ export default function Invoices() {
                     </td>
                     <td>{i.clientName}</td>
                     <td className="text-slate-600">{i.clientEmail}</td>
-                    <td>
-                      ৳{i.amount} {i.currency}
-                    </td>
+                    <td>{formatMinorAmount(i.amountMinor, i.currency)}</td>
                     <td>
                       <span
                         className={`px-2 py-0.5 rounded text-xs ${
                           i.status === "paid"
                             ? "bg-green-100 text-green-700"
-                            : i.status === "unpaid"
-                              ? "bg-amber-100 text-amber-700"
-                              : i.status === "failed"
-                                ? "bg-red-100 text-red-700"
+                            : i.status === "partially_paid"
+                              ? "bg-violet-100 text-violet-700"
+                              : i.status === "unpaid"
+                                ? "bg-amber-100 text-amber-700"
                                 : "bg-slate-100 text-slate-700"
                         }`}
                       >

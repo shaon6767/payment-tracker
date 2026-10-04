@@ -34,7 +34,7 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="bg-white w-full max-w-md p-8 rounded-xl shadow border border-slate-200">
         <h1 className="text-2xl font-bold mb-1 text-center text-indigo-600">
-          InvoicePay
+          Payment Tracker
         </h1>
         <p className="text-center text-slate-500 mb-6 text-sm">
           {mode === "login"

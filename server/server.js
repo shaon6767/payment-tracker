@@ -1,17 +1,22 @@
+import "dotenv/config";
 import cors from "cors";
-import dotenv from "dotenv";
 import express from "express";
 import mongoose from "mongoose";
-import dns from "node:dns";
-dns.setServers(["8.8.8.8", "1.1.1.1"]);
-
 import authRoutes from "./routes/authRoutes.js";
 import invoiceRoutes from "./routes/invoiceRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
-
-dotenv.config();
+import { handleError } from "./utils/httpError.js";
 
 const app = express();
+const PORT = process.env.PORT || 5000;
+const MONGO_URI = process.env.MONGO_URI;
+
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+  throw new Error("JWT_SECRET must contain at least 32 characters");
+}
+if (!MONGO_URI) {
+  throw new Error("MONGO_URI must be configured");
+}
 
 app.use(
   cors({
@@ -19,30 +24,21 @@ app.use(
     credentials: true,
   }),
 );
-app.use(express.json());
-app.use(express.urlencoded({ extended: true })); // SSLCommerz IPN posts form-encoded
-app.use((req, res, next) => {
-  console.log(`${req.method} ${req.url}`);
-  next();
-});
+app.use(express.json({ limit: "16kb" }));
+app.use(express.urlencoded({ extended: false, limit: "16kb" }));
 app.use("/api/auth", authRoutes);
 app.use("/api/invoices", invoiceRoutes);
 app.use("/api/payment", paymentRoutes);
 
 app.get("/", (req, res) =>
-  res.json({ status: "ok", service: "invoice-tracker" }),
+  res.json({ status: "ok", service: "payment-tracker" }),
 );
 
-app.use((err, req, res, next) => {
-  console.error("Global error:", err);
-  res
-    .status(err.status || 500)
-    .json({ message: err.message || "Server error" });
+app.use("/api", (req, res) => {
+  res.status(404).json({ message: "API route not found" });
 });
 
-const PORT = process.env.PORT || 5000;
-const MONGO_URI =
-  process.env.MONGO_URI || "mongodb://127.0.0.1:27017/invoice_tracker";
+app.use(handleError);
 
 mongoose
   .connect(MONGO_URI)
@@ -54,4 +50,3 @@ mongoose
     console.error("MongoDB connection error:", err.message);
     process.exit(1);
   });
-

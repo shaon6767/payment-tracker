@@ -1,97 +1,92 @@
+import mongoose from "mongoose";
 import Invoice from "../models/Invoice.js";
+import { HttpError } from "../utils/httpError.js";
+import { getOwnerInvoiceFilter } from "../utils/invoiceAccounting.js";
+import { validateInvoiceInput } from "../utils/validation.js";
+
+function validateInvoiceId(id) {
+  if (!mongoose.isValidObjectId(id)) {
+    throw new HttpError(400, "Invalid invoice ID");
+  }
+}
 
 export async function listInvoices(req, res) {
-  try {
-    const filter = { user: req.user._id };
-    const invoices = await Invoice.find(filter).sort({ createdAt: -1 });
-    res.json(invoices);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+  const filter = getOwnerInvoiceFilter(req.user._id);
+  const invoices = await Invoice.find(filter).sort({ createdAt: -1 });
+  res.json(invoices);
 }
 
 export async function getInvoice(req, res) {
-  try {
-    const inv = await Invoice.findOne({
-      _id: req.params.id,
-      user: req.user._id,
-    });
-    if (!inv) return res.status(404).json({ message: "Invoice not found" });
-    res.json(inv);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+  validateInvoiceId(req.params.id);
+  let invoice = await Invoice.findOne(
+    getOwnerInvoiceFilter(req.user._id, req.params.id),
+  );
+  if (!invoice) throw new HttpError(404, "Invoice not found");
+  const activePayment = invoice.activePayment;
+  if (activePayment?.expiresAt <= new Date()) {
+    const updated = await Invoice.findOneAndUpdate(
+      {
+        ...getOwnerInvoiceFilter(req.user._id, req.params.id),
+        "activePayment.tranId": activePayment.tranId,
+        "activePayment.expiresAt": { $lte: new Date() },
+      },
+      { $set: { pendingAmountMinor: 0, activePayment: null } },
+      { new: true },
+    );
+    invoice =
+      updated ||
+      (await Invoice.findOne(
+        getOwnerInvoiceFilter(req.user._id, req.params.id),
+      ));
   }
+  res.json(invoice);
 }
 
 export async function createInvoice(req, res) {
-  try {
-    const { clientName, clientEmail, amount, currency, description, dueDate } =
-      req.body;
-    if (!clientName || !clientEmail || !amount) {
-      return res
-        .status(400)
-        .json({ message: "clientName, clientEmail and amount are required" });
-    }
-    const inv = await Invoice.create({
-      user: req.user._id,
-      clientName,
-      clientEmail,
-      amount,
-      currency: currency || "BDT",
-      description: description || "",
-      dueDate: dueDate || null,
-    });
-    res.status(201).json(inv);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+  const values = validateInvoiceInput(req.body);
+  const invoice = await Invoice.create({ ...values, user: req.user._id });
+  res.status(201).json(invoice);
 }
 
 export async function updateInvoice(req, res) {
-  try {
-    const updates = (({
-      clientName,
-      clientEmail,
-      amount,
-      currency,
-      description,
-      dueDate,
-      status,
-    }) => ({
-      clientName,
-      clientEmail,
-      amount,
-      currency,
-      description,
-      dueDate,
-      status,
-    }))(req.body);
-
-    Object.keys(updates).forEach(
-      (k) => updates[k] === undefined && delete updates[k],
-    );
-
-    const inv = await Invoice.findOneAndUpdate(
-      { _id: req.params.id, user: req.user._id },
-      updates,
-      { new: true, runValidators: true },
-    );
-    if (!inv) return res.status(404).json({ message: "Invoice not found" });
-    res.json(inv);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
+  validateInvoiceId(req.params.id);
+  const updates = validateInvoiceInput(req.body, { partial: true });
+  const filter = getOwnerInvoiceFilter(req.user._id, req.params.id);
+  if (updates.amountMinor !== undefined || updates.currency !== undefined) {
+    filter.paidAmountMinor = 0;
+    filter.pendingAmountMinor = 0;
   }
+
+  const invoice = await Invoice.findOneAndUpdate(
+    filter,
+    { $set: updates },
+    { new: true, runValidators: true },
+  );
+  if (invoice) return res.json(invoice);
+
+  const exists = await Invoice.exists(
+    getOwnerInvoiceFilter(req.user._id, req.params.id),
+  );
+  if (!exists) throw new HttpError(404, "Invoice not found");
+  throw new HttpError(
+    409,
+    "Amount and currency cannot change after a payment is recorded or started",
+  );
 }
 
 export async function deleteInvoice(req, res) {
-  try {
-    const inv = await Invoice.findOneAndDelete({
-      _id: req.params.id,
-      user: req.user._id,
-    });
-    if (!inv) return res.status(404).json({ message: "Invoice not found" });
-    res.json({ message: "Invoice deleted" });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+  validateInvoiceId(req.params.id);
+  const filter = {
+    ...getOwnerInvoiceFilter(req.user._id, req.params.id),
+    paidAmountMinor: 0,
+    pendingAmountMinor: 0,
+  };
+  const invoice = await Invoice.findOneAndDelete(filter);
+  if (invoice) return res.json({ message: "Invoice deleted" });
+
+  const exists = await Invoice.exists(
+    getOwnerInvoiceFilter(req.user._id, req.params.id),
+  );
+  if (!exists) throw new HttpError(404, "Invoice not found");
+  throw new HttpError(409, "Invoices with payment activity cannot be deleted");
 }

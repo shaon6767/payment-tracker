@@ -16,7 +16,7 @@ export default function InvoiceForm({ initial, onSubmit, submitting }) {
     e.preventDefault();
     onSubmit({
       ...form,
-      amount: Number(form.amount),
+      amount: form.amount,
       dueDate: form.dueDate || undefined,
     });
   };
@@ -55,7 +55,7 @@ export default function InvoiceForm({ initial, onSubmit, submitting }) {
           <label className="block text-sm font-medium mb-1">Amount *</label>
           <input
             type="number"
-            min="1"
+            min="0.01"
             step="0.01"
             name="amount"
             required

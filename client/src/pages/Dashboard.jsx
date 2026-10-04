@@ -1,15 +1,20 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../api/axios";
+import { formatMinorAmount } from "../utils/money.js";
 
 export default function Dashboard() {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     api
       .get("/invoices")
       .then(({ data }) => setInvoices(data))
+      .catch((err) =>
+        setError(err?.response?.data?.message || "Failed to load invoices"),
+      )
       .finally(() => setLoading(false));
   }, []);
 
@@ -17,16 +22,33 @@ export default function Dashboard() {
     total: invoices.length,
     paid: invoices.filter((i) => i.status === "paid").length,
     unpaid: invoices.filter((i) => i.status === "unpaid").length,
-    revenue: invoices
-      .filter((i) => i.status === "paid")
-      .reduce((s, i) => s + i.amount, 0),
+    partial: invoices.filter((i) => i.status === "partially_paid").length,
+    revenue: invoices.reduce((totals, invoice) => {
+      if (invoice.paidAmountMinor > 0) {
+        totals[invoice.currency] =
+          (totals[invoice.currency] || 0n) + BigInt(invoice.paidAmountMinor);
+      }
+      return totals;
+    }, {}),
   };
 
   const cards = [
     { label: "Total Invoices", value: stats.total, color: "bg-blue-700" },
     { label: "Paid", value: stats.paid, color: "bg-green-700" },
     { label: "Unpaid", value: stats.unpaid, color: "bg-amber-700" },
-    { label: "Revenue", value: `৳${stats.revenue}`, color: "bg-indigo-500" },
+    {
+      label: "Partially Paid",
+      value: stats.partial,
+      color: "bg-violet-700",
+    },
+    {
+      label: "Collected",
+      value:
+        Object.entries(stats.revenue)
+          .map(([currency, amount]) => formatMinorAmount(amount, currency))
+          .join(" · ") || "—",
+      color: "bg-indigo-500",
+    },
   ];
 
   return (
@@ -41,7 +63,7 @@ export default function Dashboard() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
         {cards.map((c) => (
           <div
             key={c.label}
@@ -61,6 +83,8 @@ export default function Dashboard() {
         <h2 className="font-semibold mb-3">Recent Invoices</h2>
         {loading ? (
           <p>Loading…</p>
+        ) : error ? (
+          <p className="text-red-600" role="alert">{error}</p>
         ) : invoices.length === 0 ? (
           <p className="text-slate-500 text-sm">
             No invoices yet. Create your first one.
@@ -84,15 +108,17 @@ export default function Dashboard() {
                       {i.invoiceNumber}
                     </td>
                     <td>{i.clientName}</td>
-                    <td>৳{i.amount}</td>
+                    <td>{formatMinorAmount(i.amountMinor, i.currency)}</td>
                     <td>
                       <span
                         className={`px-2 py-0.5 rounded text-xs ${
                           i.status === "paid"
                             ? "bg-green-100 text-green-700"
-                            : i.status === "unpaid"
-                              ? "bg-amber-100 text-amber-700"
-                              : "bg-slate-100 text-slate-700"
+                            : i.status === "partially_paid"
+                              ? "bg-violet-100 text-violet-700"
+                              : i.status === "unpaid"
+                                ? "bg-amber-100 text-amber-700"
+                                : "bg-slate-100 text-slate-700"
                         }`}
                       >
                         {i.status}

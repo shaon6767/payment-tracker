@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import api from "../api/axios";
+import { formatMinorAmount } from "../utils/money.js";
 
 export default function InvoiceDetail() {
   const { id } = useParams();
   const [invoice, setInvoice] = useState(null);
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -35,7 +37,9 @@ export default function InvoiceDetail() {
     setError("");
     setPaying(true);
     try {
-      const { data } = await api.post(`/payment/initiate/${id}`);
+      const { data } = await api.post(`/payment/initiate/${id}`, {
+        amount: paymentAmount,
+      });
       if (data.gatewayUrl) {
         window.location.href = data.gatewayUrl;
       } else {
@@ -55,10 +59,12 @@ export default function InvoiceDetail() {
   const statusColor =
     {
       paid: "bg-green-100 text-green-700",
+      partially_paid: "bg-violet-100 text-violet-700",
       unpaid: "bg-amber-100 text-amber-700",
       failed: "bg-red-100 text-red-700",
       cancelled: "bg-slate-100 text-slate-700",
     }[invoice.status] || "bg-slate-100";
+  const paymentInProgress = invoice.pendingAmountMinor > 0;
 
   return (
     <div className="max-w-3xl mx-auto p-6">
@@ -109,19 +115,72 @@ export default function InvoiceDetail() {
         <div className="border-t pt-4 flex items-center justify-between">
           <span className="text-lg font-semibold">Total</span>
           <span className="text-2xl font-bold text-indigo-600">
-            ৳{invoice.amount} {invoice.currency}
+            {formatMinorAmount(invoice.amountMinor, invoice.currency)}
           </span>
         </div>
 
+        {invoice.paidAmountMinor > 0 && (
+          <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <dt className="text-slate-500">Paid so far</dt>
+              <dd className="font-medium">
+                {formatMinorAmount(invoice.paidAmountMinor, invoice.currency)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Remaining</dt>
+              <dd className="font-medium">
+                {formatMinorAmount(
+                  invoice.amountMinor - invoice.paidAmountMinor,
+                  invoice.currency,
+                )}
+              </dd>
+            </div>
+          </dl>
+        )}
+
         <div className="mt-6">
-          {invoice.status === "unpaid" ? (
-            <button
-              onClick={payNow}
-              disabled={paying}
-              className="w-full bg-indigo-600 text-white py-3 rounded hover:bg-indigo-700 disabled:opacity-60"
+          {paymentInProgress ? (
+            <div
+              className="text-center text-amber-800 bg-amber-50 p-3 rounded"
+              role="status"
             >
-              {paying ? "Redirecting to SSLCommerz…" : "Pay Now"}
-            </button>
+              A payment is already in progress. Refresh this page after the
+              checkout expires if it was not completed.
+            </div>
+          ) : ["unpaid", "partially_paid"].includes(invoice.status) ? (
+            <form
+              className="space-y-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                payNow();
+              }}
+            >
+              <label
+                className="block text-sm font-medium"
+                htmlFor="payment-amount"
+              >
+                Amount to pay
+              </label>
+              <input
+                id="payment-amount"
+                type="number"
+                min="0.01"
+                max={invoice.remainingAmount}
+                step="0.01"
+                required
+                value={paymentAmount}
+                onChange={(event) => setPaymentAmount(event.target.value)}
+                className="w-full px-3 py-2 border rounded"
+              />
+              <button
+                type="submit"
+                disabled={paying}
+                className="w-full bg-indigo-600 text-white py-3 rounded hover:bg-indigo-700 disabled:opacity-60"
+              >
+                {paying ? "Redirecting to SSLCommerz…" : "Pay"}
+              </button>
+            </form>
           ) : invoice.status === "paid" ? (
             <div className="text-center text-green-700 bg-green-50 p-3 rounded">
               ✓ Payment received{" "}

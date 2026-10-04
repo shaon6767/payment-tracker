@@ -1,39 +1,145 @@
+import { randomUUID } from "node:crypto";
+import mongoose from "mongoose";
 import SSLCommerzPayment from "sslcommerz-lts";
 import Invoice from "../models/Invoice.js";
+import {
+  createPaymentReservation,
+  getOwnerInvoiceFilter,
+  settlePayment,
+} from "../utils/invoiceAccounting.js";
+import { HttpError } from "../utils/httpError.js";
+import { formatMinorAmount, parseAmountMinor } from "../utils/money.js";
+import { validatePaymentInput } from "../utils/validation.js";
 
-const store_id = process.env.SSLCOMMERZ_STORE_ID;
-const store_passwd = process.env.SSLCOMMERZ_STORE_PASSWD;
-const isSandbox = true;
+const PAYMENT_RESERVATION_MS = 30 * 60 * 1000;
 
-function base() {
-  const p = process.env.PORT || 5000;
-  // Use ngrok URL via SSL_BASE_URL env when testing IPN locally
-  if (process.env.SSL_BASE_URL)
-    return process.env.SSL_BASE_URL.replace(/\/$/, "");
-  return `http://localhost:${p}`;
+function gatewayCredentials() {
+  const storeId = process.env.SSLCOMMERZ_STORE_ID;
+  const storePassword = process.env.SSLCOMMERZ_STORE_PASSWD;
+  if (
+    !storeId ||
+    !storePassword ||
+    storeId.startsWith("your-") ||
+    storePassword.startsWith("your-")
+  ) {
+    throw new HttpError(503, "Payment gateway is not configured");
+  }
+  return { storeId, storePassword };
 }
 
-// POST /api/payment/initiate/:invoiceId
+function callbackPayload(req) {
+  const values = { ...req.query, ...(req.body || {}) };
+  return Object.fromEntries(
+    Object.entries(values).filter(([, value]) => typeof value === "string"),
+  );
+}
+
+function paymentBaseUrl() {
+  if (process.env.SSL_BASE_URL) {
+    return process.env.SSL_BASE_URL.replace(/\/$/, "");
+  }
+  const port = process.env.PORT || 5000;
+  return `http://localhost:${port}`;
+}
+
+function redirectToResult(res, status, invoiceId) {
+  const query = new URLSearchParams({ status });
+  if (invoiceId && mongoose.isValidObjectId(invoiceId)) {
+    query.set("value_a", String(invoiceId));
+  }
+  const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
+  res.redirect(`${clientUrl}/payment/result?${query.toString()}`);
+}
+
+async function clearExpiredReservation(invoice, userId) {
+  if (
+    !invoice.activePayment?.tranId ||
+    invoice.activePayment.expiresAt > new Date()
+  ) {
+    return invoice;
+  }
+
+  await Invoice.updateOne(
+    {
+      _id: invoice._id,
+      user: userId,
+      "activePayment.tranId": invoice.activePayment.tranId,
+      "activePayment.expiresAt": { $lte: new Date() },
+    },
+    {
+      $set: { pendingAmountMinor: 0, activePayment: null },
+    },
+  );
+  return Invoice.findOne(getOwnerInvoiceFilter(userId, invoice._id));
+}
+
+async function releaseReservation(invoiceId, tranId) {
+  await Invoice.updateOne(
+    { _id: invoiceId, "activePayment.tranId": tranId },
+    { $set: { pendingAmountMinor: 0, activePayment: null } },
+  );
+}
+
 export async function initiatePayment(req, res) {
-  try {
-    const invoice = await Invoice.findOne({
-      _id: req.params.invoiceId,
+  if (!mongoose.isValidObjectId(req.params.invoiceId)) {
+    throw new HttpError(400, "Invalid invoice ID");
+  }
+
+  let invoice = await Invoice.findOne(
+    getOwnerInvoiceFilter(req.user._id, req.params.invoiceId),
+  );
+  if (!invoice) throw new HttpError(404, "Invoice not found");
+  invoice = await clearExpiredReservation(invoice, req.user._id);
+  if (!invoice) throw new HttpError(404, "Invoice not found");
+
+  const requestedAmountMinor = validatePaymentInput(req.body || {});
+  const amountMinor =
+    requestedAmountMinor ?? invoice.amountMinor - invoice.paidAmountMinor;
+  if (!amountMinor || amountMinor < 1) {
+    throw new HttpError(400, "Payment amount must be positive with at most 2 decimals");
+  }
+
+  const tranId = `txn_${randomUUID()}`;
+  const expiresAt = new Date(Date.now() + PAYMENT_RESERVATION_MS);
+  const reservation = createPaymentReservation(
+    invoice,
+    amountMinor,
+    tranId,
+    expiresAt,
+  );
+  if (reservation.error) throw new HttpError(409, reservation.error);
+
+  const reservedInvoice = await Invoice.findOneAndUpdate(
+    {
+      _id: invoice._id,
       user: req.user._id,
-    });
-    if (!invoice) return res.status(404).json({ message: "Invoice not found" });
-    if (invoice.status === "paid")
-      return res.status(400).json({ message: "Invoice already paid" });
+      amountMinor: invoice.amountMinor,
+      paidAmountMinor: invoice.paidAmountMinor,
+      pendingAmountMinor: 0,
+      status: { $in: ["unpaid", "partially_paid"] },
+    },
+    { $set: reservation.value },
+    { new: true },
+  );
+  if (!reservedInvoice) {
+    throw new HttpError(409, "Invoice changed; refresh and try again");
+  }
 
-    const tranId = `txn_${invoice._id}_${Date.now()}`;
-
+  try {
+    const { storeId, storePassword } = gatewayCredentials();
+    const sslcz = new SSLCommerzPayment(
+      storeId,
+      storePassword,
+      process.env.SSLCOMMERZ_IS_SANDBOX !== "false",
+    );
     const data = {
-      total_amount: invoice.amount,
-      currency: invoice.currency || "BDT",
+      total_amount: formatMinorAmount(amountMinor),
+      currency: invoice.currency,
       tran_id: tranId,
-      success_url: `${base()}/api/payment/success`,
-      fail_url: `${base()}/api/payment/fail`,
-      cancel_url: `${base()}/api/payment/cancel`,
-      ipn_url: `${base()}/api/payment/ipn`,
+      success_url: `${paymentBaseUrl()}/api/payment/success`,
+      fail_url: `${paymentBaseUrl()}/api/payment/fail`,
+      cancel_url: `${paymentBaseUrl()}/api/payment/cancel`,
+      ipn_url: `${paymentBaseUrl()}/api/payment/ipn`,
       shipping_method: "No",
       product_name: invoice.invoiceNumber,
       product_category: "Service",
@@ -49,114 +155,145 @@ export async function initiatePayment(req, res) {
       value_b: req.user._id.toString(),
     };
 
-    const sslcz = new SSLCommerzPayment(store_id, store_passwd, isSandbox);
-    const apiResp = await sslcz.init(data, false);
-
-    if (apiResp?.status === "SUCCESS" && apiResp?.GatewayPageURL) {
-      invoice.tranId = tranId;
-      await invoice.save();
-      return res.json({
-        gatewayUrl: apiResp.GatewayPageURL,
-        tranId,
-        sessionId: apiResp.sessionkey,
-      });
+    const response = await sslcz.init(data, false);
+    if (response?.status !== "SUCCESS" || !response?.GatewayPageURL) {
+      await releaseReservation(invoice._id, tranId);
+      throw new HttpError(502, "Payment gateway could not start the session");
     }
 
-    return res
-      .status(400)
-      .json({ message: "Failed to initiate payment", detail: apiResp });
-  } catch (err) {
-    console.error("initiatePayment error:", err);
-    res.status(500).json({ message: err.message });
+    return res.json({
+      gatewayUrl: response.GatewayPageURL,
+      tranId,
+      sessionId: response.sessionkey,
+    });
+  } catch (error) {
+    await releaseReservation(invoice._id, tranId);
+    throw error;
   }
 }
 
-async function validatePayment(orderParams) {
-  // Build validation POST to SSLCommerz
-  const search = new URLSearchParams({
-    store_id,
-    store_passwd,
-    tran_id: orderParams.tran_id,
-    val_id: orderParams.val_id,
+async function validatePayment(payload) {
+  if (!payload.tran_id || !payload.val_id) return null;
+  const { storeId, storePassword } = gatewayCredentials();
+  const query = new URLSearchParams({
+    store_id: storeId,
+    store_passwd: storePassword,
+    tran_id: payload.tran_id,
+    val_id: payload.val_id,
   });
-
-  const baseDomain = isSandbox
-    ? "https://sandbox.sslcommerz.com"
-    : "https://securepay.sslcommerz.com";
-
-  const url = `${baseDomain}/validator/api/merchant-validate-serverapi.php?${search.toString()}`;
-  const resp = await fetch(url);
-  return await resp.json();
+  const domain =
+    process.env.SSLCOMMERZ_IS_SANDBOX === "false"
+      ? "https://securepay.sslcommerz.com"
+      : "https://sandbox.sslcommerz.com";
+  const response = await fetch(
+    `${domain}/validator/api/merchant-validate-serverapi.php?${query}`,
+    { signal: AbortSignal.timeout(10000) },
+  );
+  if (!response.ok) throw new HttpError(502, "Payment validation service failed");
+  return response.json();
 }
 
 async function applyPayment(payload) {
-  // payload: { status, tran_id, val_id, amount, value_a (invoiceId) }
-  const invoiceId = payload.value_a || payload.valueA;
-  const invoice = await Invoice.findById(invoiceId);
-  if (!invoice) return;
+  const tranId = payload.tran_id?.trim();
+  if (!tranId) return { ok: false };
 
-  const valid = await validatePayment(payload);
+  const priorPayment = await Invoice.findOne({ "payments.tranId": tranId });
+  if (priorPayment) {
+    return {
+      ok: true,
+      invoiceId: priorPayment._id,
+      status: priorPayment.status,
+    };
+  }
 
+  const invoice = await Invoice.findOne({ "activePayment.tranId": tranId });
+  if (!invoice) return { ok: false };
   if (
-    valid?.status === "VALID" &&
-    String(valid.amount) === String(invoice.amount) &&
-    valid.tran_id === invoice.tranId
+    payload.value_a !== invoice._id.toString() ||
+    payload.value_b !== invoice.user.toString()
   ) {
-    invoice.status = "paid";
-    invoice.paidAt = new Date();
-    await invoice.save();
-  } else {
-    invoice.status = "failed";
-    await invoice.save();
+    return { ok: false };
   }
+
+  const verified = await validatePayment(payload);
+  const verifiedAmount = parseAmountMinor(verified?.amount);
+  if (
+    !["VALID", "VALIDATED"].includes(verified?.status) ||
+    verified.tran_id !== tranId ||
+    verifiedAmount !== invoice.activePayment.amountMinor ||
+    String(verified.currency || "").toUpperCase() !== invoice.currency ||
+    verified.value_a !== invoice._id.toString() ||
+    verified.value_b !== invoice.user.toString()
+  ) {
+    return { ok: false };
+  }
+
+  const paidAt = new Date();
+  const settlement = settlePayment(
+    invoice,
+    invoice.activePayment.amountMinor,
+    tranId,
+    paidAt,
+  );
+  if (!settlement) return { ok: false };
+
+  const updated = await Invoice.findOneAndUpdate(
+    {
+      _id: invoice._id,
+      user: invoice.user,
+      "activePayment.tranId": tranId,
+      "activePayment.amountMinor": settlement.payment.amountMinor,
+      pendingAmountMinor: settlement.payment.amountMinor,
+      paidAmountMinor: invoice.paidAmountMinor,
+      amountMinor: invoice.amountMinor,
+    },
+    {
+      $inc: { paidAmountMinor: settlement.payment.amountMinor },
+      $set: {
+        pendingAmountMinor: 0,
+        activePayment: null,
+        status: settlement.status,
+        paidAt: settlement.paidAt,
+      },
+      $push: { payments: settlement.payment },
+    },
+    { new: true },
+  );
+
+  if (!updated) return { ok: false };
+  return { ok: true, invoiceId: updated._id, status: updated.status };
 }
 
-// POST /api/payment/success
 export async function paymentSuccess(req, res) {
+  const payload = callbackPayload(req);
   try {
-    await applyPayment(req.body || req.query);
-  } catch (e) {
-    console.error("success handler error:", e);
+    const result = await applyPayment(payload);
+    redirectToResult(
+      res,
+      result.ok ? "confirmed" : "unconfirmed",
+      result.invoiceId || payload.value_a,
+    );
+  } catch (error) {
+    console.error(
+      "Payment success callback failed:",
+      error instanceof HttpError ? error.message : "External validation request failed",
+    );
+    redirectToResult(res, "unconfirmed", payload.value_a);
   }
-  const q = new URLSearchParams(req.body || req.query).toString();
-  res.redirect(`${process.env.CLIENT_URL}/payment/result?${q}`);
 }
 
-// POST /api/payment/fail
-export async function paymentFail(req, res) {
-  try {
-    if (req.body?.value_a) {
-      await Invoice.findByIdAndUpdate(req.body.value_a, { status: "failed" });
-    }
-  } catch (e) {
-    console.error(e);
-  }
-  const q = new URLSearchParams(req.body || req.query).toString();
-  res.redirect(`${process.env.CLIENT_URL}/payment/result?${q}`);
+export function paymentFail(req, res) {
+  const payload = callbackPayload(req);
+  redirectToResult(res, "failed", payload.value_a);
 }
 
-// POST /api/payment/cancel
-export async function paymentCancel(req, res) {
-  try {
-    if (req.body?.value_a) {
-      await Invoice.findByIdAndUpdate(req.body.value_a, {
-        status: "cancelled",
-      });
-    }
-  } catch (e) {
-    console.error(e);
-  }
-  const q = new URLSearchParams(req.body || req.query).toString();
-  res.redirect(`${process.env.CLIENT_URL}/payment/result?${q}`);
+export function paymentCancel(req, res) {
+  const payload = callbackPayload(req);
+  redirectToResult(res, "cancelled", payload.value_a);
 }
 
-// POST /api/payment/ipn
 export async function paymentIPN(req, res) {
-  try {
-    await applyPayment(req.body || req.query);
-    res.status(200).send("IPN processed");
-  } catch (e) {
-    console.error("IPN error:", e);
-    res.status(500).send("IPN error");
-  }
+  const result = await applyPayment(callbackPayload(req));
+  if (!result.ok) throw new HttpError(400, "Payment could not be verified");
+  res.status(200).send("IPN processed");
 }

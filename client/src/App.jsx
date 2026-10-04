@@ -30,7 +30,7 @@ function Navbar() {
           className="font-bold text-lg text-indigo-600"
           onClick={closeMenu}
         >
-          InvoicePay
+          Payment Tracker
         </Link>
 
         {/* Desktop links */}

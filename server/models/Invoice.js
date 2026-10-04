@@ -1,4 +1,24 @@
+import { randomBytes } from "node:crypto";
 import mongoose from "mongoose";
+import { formatMinorAmount } from "../utils/money.js";
+
+const receiptSchema = new mongoose.Schema(
+  {
+    tranId: { type: String, required: true },
+    amountMinor: { type: Number, required: true, min: 1 },
+    paidAt: { type: Date, required: true },
+  },
+  { _id: false },
+);
+
+const activePaymentSchema = new mongoose.Schema(
+  {
+    tranId: { type: String, required: true },
+    amountMinor: { type: Number, required: true, min: 1 },
+    expiresAt: { type: Date, required: true },
+  },
+  { _id: false },
+);
 
 const invoiceSchema = new mongoose.Schema(
   {
@@ -9,28 +29,64 @@ const invoiceSchema = new mongoose.Schema(
       index: true,
     },
     invoiceNumber: { type: String, required: true, unique: true },
-    clientName: { type: String, required: true, trim: true },
-    clientEmail: { type: String, required: true, trim: true, lowercase: true },
-    amount: { type: Number, required: true, min: 0 },
-    currency: { type: String, default: "BDT" },
-    description: { type: String, default: "" },
+    clientName: { type: String, required: true, trim: true, maxlength: 120 },
+    clientEmail: {
+      type: String,
+      required: true,
+      trim: true,
+      lowercase: true,
+      maxlength: 254,
+    },
+    amountMinor: {
+      type: Number,
+      required: true,
+      min: 1,
+      validate: Number.isSafeInteger,
+    },
+    paidAmountMinor: {
+      type: Number,
+      default: 0,
+      min: 0,
+      validate: Number.isSafeInteger,
+    },
+    pendingAmountMinor: {
+      type: Number,
+      default: 0,
+      min: 0,
+      validate: Number.isSafeInteger,
+    },
+    activePayment: { type: activePaymentSchema, default: null },
+    payments: { type: [receiptSchema], default: [] },
+    currency: { type: String, enum: ["BDT", "USD"], default: "BDT" },
+    description: { type: String, default: "", maxlength: 2000 },
     status: {
       type: String,
-      enum: ["unpaid", "paid", "cancelled", "failed"],
+      enum: ["unpaid", "partially_paid", "paid", "cancelled"],
       default: "unpaid",
     },
-    tranId: { type: String, default: null },
     paidAt: { type: Date, default: null },
-    dueDate: { type: Date },
+    dueDate: { type: Date, default: null },
   },
-  { timestamps: true },
+  { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } },
 );
 
-invoiceSchema.pre("validate", async function (next) {
-  if (this.invoiceNumber) return next();
-  const count = await mongoose.models.Invoice.countDocuments();
-  this.invoiceNumber = `INV-${Date.now()}-${(count + 1).toString().padStart(4, "0")}`;
-  next();
+invoiceSchema.virtual("amount").get(function () {
+  return formatMinorAmount(this.amountMinor);
+});
+
+invoiceSchema.virtual("paidAmount").get(function () {
+  return formatMinorAmount(this.paidAmountMinor);
+});
+
+invoiceSchema.virtual("remainingAmount").get(function () {
+  return formatMinorAmount(this.amountMinor - this.paidAmountMinor);
+});
+
+invoiceSchema.pre("validate", function () {
+  if (!this.invoiceNumber) {
+    const suffix = randomBytes(6).toString("hex").toUpperCase();
+    this.invoiceNumber = `INV-${Date.now()}-${suffix}`;
+  }
 });
 
 const Invoice = mongoose.model("Invoice", invoiceSchema);
