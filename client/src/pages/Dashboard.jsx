@@ -5,31 +5,29 @@ import { formatMinorAmount } from "../utils/money.js";
 
 export default function Dashboard() {
   const [invoices, setInvoices] = useState([]);
+  const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
     api
-      .get("/invoices")
-      .then(({ data }) => setInvoices(data))
+      .get("/invoices?page=1&limit=5")
+      .then(({ data }) => {
+        setInvoices(data.items);
+        setSummary(data.summary);
+      })
       .catch((err) =>
         setError(err?.response?.data?.message || "Failed to load invoices"),
       )
       .finally(() => setLoading(false));
   }, []);
 
-  const stats = {
-    total: invoices.length,
-    paid: invoices.filter((i) => i.status === "paid").length,
-    unpaid: invoices.filter((i) => i.status === "unpaid").length,
-    partial: invoices.filter((i) => i.status === "partially_paid").length,
-    revenue: invoices.reduce((totals, invoice) => {
-      if (invoice.paidAmountMinor > 0) {
-        totals[invoice.currency] =
-          (totals[invoice.currency] || 0n) + BigInt(invoice.paidAmountMinor);
-      }
-      return totals;
-    }, {}),
+  const stats = summary || {
+    total: 0,
+    paid: 0,
+    unpaid: 0,
+    partiallyPaid: 0,
+    revenue: {},
   };
 
   const cards = [
@@ -38,7 +36,7 @@ export default function Dashboard() {
     { label: "Unpaid", value: stats.unpaid, color: "bg-amber-700" },
     {
       label: "Partially Paid",
-      value: stats.partial,
+      value: stats.partiallyPaid,
       color: "bg-violet-700",
     },
     {

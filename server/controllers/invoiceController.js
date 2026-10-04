@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Invoice from "../models/Invoice.js";
 import { HttpError } from "../utils/httpError.js";
 import { getOwnerInvoiceFilter } from "../utils/invoiceAccounting.js";
+import { parsePagination } from "../utils/pagination.js";
 import { validateInvoiceInput } from "../utils/validation.js";
 
 function validateInvoiceId(id) {
@@ -12,8 +13,71 @@ function validateInvoiceId(id) {
 
 export async function listInvoices(req, res) {
   const filter = getOwnerInvoiceFilter(req.user._id);
-  const invoices = await Invoice.find(filter).sort({ createdAt: -1 });
-  res.json(invoices);
+  const { page, limit, skip } = parsePagination(req.query);
+  const [items, total, [aggregate = {}]] = await Promise.all([
+    Invoice.find(filter)
+      .sort({ createdAt: -1, _id: -1 })
+      .skip(skip)
+      .limit(limit),
+    Invoice.countDocuments(filter),
+    Invoice.aggregate([
+      { $match: filter },
+      {
+        $facet: {
+          stats: [
+            {
+              $group: {
+                _id: null,
+                total: { $sum: 1 },
+                paid: {
+                  $sum: { $cond: [{ $eq: ["$status", "paid"] }, 1, 0] },
+                },
+                partiallyPaid: {
+                  $sum: {
+                    $cond: [{ $eq: ["$status", "partially_paid"] }, 1, 0],
+                  },
+                },
+                unpaid: {
+                  $sum: { $cond: [{ $eq: ["$status", "unpaid"] }, 1, 0] },
+                },
+              },
+            },
+          ],
+          revenue: [
+            {
+              $group: {
+                _id: "$currency",
+                collectedMinor: { $sum: "$paidAmountMinor" },
+              },
+            },
+          ],
+        },
+      },
+    ]),
+  ]);
+  const stats = aggregate.stats?.[0] || {
+    total: 0,
+    paid: 0,
+    partiallyPaid: 0,
+    unpaid: 0,
+  };
+  const revenue = Object.fromEntries(
+    (aggregate.revenue || []).map(({ _id, collectedMinor }) => [
+      _id,
+      collectedMinor,
+    ]),
+  );
+
+  res.json({
+    items,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+    summary: { ...stats, revenue },
+  });
 }
 
 export async function getInvoice(req, res) {

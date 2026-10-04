@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../api/axios";
 import InvoiceForm from "../components/InvoiceForm.jsx";
@@ -10,30 +10,38 @@ export default function Invoices() {
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState(null);
 
-  const load = async () => {
+  const load = useCallback(async (pageNumber = page) => {
     setLoading(true);
     setError("");
     try {
-      const { data } = await api.get("/invoices");
-      setInvoices(data);
+      const { data } = await api.get(
+        `/invoices?page=${pageNumber}&limit=10`,
+      );
+      setInvoices(data.items);
+      setPagination(data.pagination);
+      return data.items;
     } catch (err) {
       setError(err?.response?.data?.message || "Failed to load invoices");
+      return null;
     } finally {
       setLoading(false);
     }
-  };
+  }, [page]);
 
   useEffect(() => {
-    load();
-  }, []);
+    load(page);
+  }, [load, page]);
 
   const create = async (payload) => {
     setSubmitting(true);
     try {
       await api.post("/invoices", payload);
       setShowForm(false);
-      await load();
+      if (page !== 1) setPage(1);
+      else await load(1);
     } catch (err) {
       alert(err?.response?.data?.message || "Failed to create invoice");
     } finally {
@@ -45,7 +53,8 @@ export default function Invoices() {
     if (!confirm("Delete this invoice?")) return;
     try {
       await api.delete(`/invoices/${id}`);
-      load();
+      const updated = await load();
+      if (updated?.length === 0 && page > 1) setPage(page - 1);
     } catch (err) {
       alert(err?.response?.data?.message || "Failed to delete");
     }
@@ -131,6 +140,31 @@ export default function Invoices() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+        {!loading && pagination && pagination.totalPages > 1 && (
+          <div className="mt-4 flex items-center justify-between text-sm">
+            <span className="text-slate-600">
+              Page {pagination.page} of {pagination.totalPages}
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={page <= 1}
+                onClick={() => setPage((current) => current - 1)}
+                className="px-3 py-1 border rounded disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                disabled={page >= pagination.totalPages}
+                onClick={() => setPage((current) => current + 1)}
+                className="px-3 py-1 border rounded disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
           </div>
         )}
       </div>
