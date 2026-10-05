@@ -118,7 +118,7 @@ export async function updateInvoice(req, res) {
   const invoice = await Invoice.findOneAndUpdate(
     filter,
     { $set: updates },
-    { new: true, runValidators: true },
+    { returnDocument: "after", runValidators: true },
   );
   if (invoice) return res.json(invoice);
 

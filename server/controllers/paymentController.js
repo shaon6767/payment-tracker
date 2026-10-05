@@ -8,7 +8,8 @@ import {
   settlePayment,
 } from "../utils/invoiceAccounting.js";
 import { HttpError } from "../utils/httpError.js";
-import { formatMinorAmount, parseAmountMinor } from "../utils/money.js";
+import { parseAmountMinor } from "../utils/money.js";
+import { buildSslCommerzPayload } from "../utils/sslcommerzPayload.js";
 import { validatePaymentInput } from "../utils/validation.js";
 
 const PAYMENT_RESERVATION_MS = 30 * 60 * 1000;
@@ -85,6 +86,18 @@ function paymentBaseUrl() {
   }
   const port = process.env.PORT || 5000;
   return `http://localhost:${port}`;
+}
+
+function gatewayFailureReason(response) {
+  if (response instanceof Error) return response.message.slice(0, 300);
+
+  for (const key of ["failedreason", "failed_reason", "error", "message"]) {
+    if (typeof response?.[key] === "string" && response[key].trim()) {
+      return response[key].trim().slice(0, 300);
+    }
+  }
+
+  return null;
 }
 
 function redirectToResult(res, status, invoiceId) {
@@ -164,7 +177,7 @@ export async function initiatePayment(req, res) {
       status: { $in: ["unpaid", "partially_paid"] },
     },
     { $set: reservation.value },
-    { new: true },
+    { returnDocument: "after" },
   );
   if (!reservedInvoice) {
     throw new HttpError(409, "Invoice changed; refresh and try again");
@@ -177,33 +190,22 @@ export async function initiatePayment(req, res) {
       storePassword,
       process.env.SSLCOMMERZ_IS_SANDBOX !== "false",
     );
-    const data = {
-      total_amount: formatMinorAmount(amountMinor),
-      currency: invoice.currency,
-      tran_id: tranId,
-      success_url: `${paymentBaseUrl()}/api/payment/success`,
-      fail_url: `${paymentBaseUrl()}/api/payment/fail`,
-      cancel_url: `${paymentBaseUrl()}/api/payment/cancel`,
-      ipn_url: `${paymentBaseUrl()}/api/payment/ipn`,
-      shipping_method: "No",
-      product_name: invoice.invoiceNumber,
-      product_category: "Service",
-      product_profile: "non-physical-goods",
-      cus_name: invoice.clientName,
-      cus_email: invoice.clientEmail,
-      cus_add1: "N/A",
-      cus_city: "Dhaka",
-      cus_postcode: "1000",
-      cus_country: "Bangladesh",
-      cus_phone: "0000000000",
-      value_a: invoice._id.toString(),
-      value_b: req.user._id.toString(),
-      value_c: paymentSignature(invoice, tranId, amountMinor),
-    };
+    const data = buildSslCommerzPayload({
+      invoice,
+      userId: req.user._id,
+      tranId,
+      amountMinor,
+      signature: paymentSignature(invoice, tranId, amountMinor),
+      baseUrl: paymentBaseUrl(),
+    });
 
     const response = await sslcz.init(data, false);
     if (response?.status !== "SUCCESS" || !response?.GatewayPageURL) {
       await releaseReservation(invoice._id, tranId);
+      console.error("SSLCommerz session initialization failed:", {
+        status: response?.status || null,
+        reason: gatewayFailureReason(response),
+      });
       throw new HttpError(502, "Payment gateway could not start the session");
     }
 
@@ -309,7 +311,7 @@ async function applyPayment(payload) {
       },
       $push: { payments: settlement.payment },
     },
-    { new: true },
+    { returnDocument: "after" },
   );
 
   if (!updated) return { ok: false };
