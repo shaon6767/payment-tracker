@@ -82,27 +82,10 @@ export async function listInvoices(req, res) {
 
 export async function getInvoice(req, res) {
   validateInvoiceId(req.params.id);
-  let invoice = await Invoice.findOne(
+  const invoice = await Invoice.findOne(
     getOwnerInvoiceFilter(req.user._id, req.params.id),
   );
   if (!invoice) throw new HttpError(404, "Invoice not found");
-  const activePayment = invoice.activePayment;
-  if (activePayment?.expiresAt <= new Date()) {
-    const updated = await Invoice.findOneAndUpdate(
-      {
-        ...getOwnerInvoiceFilter(req.user._id, req.params.id),
-        "activePayment.tranId": activePayment.tranId,
-        "activePayment.expiresAt": { $lte: new Date() },
-      },
-      { $set: { pendingAmountMinor: 0, activePayment: null } },
-      { new: true },
-    );
-    invoice =
-      updated ||
-      (await Invoice.findOne(
-        getOwnerInvoiceFilter(req.user._id, req.params.id),
-      ));
-  }
   res.json(invoice);
 }
 

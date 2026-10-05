@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../api/axios";
+import { isInvoiceOverdue } from "../utils/invoice.js";
 import { formatMinorAmount } from "../utils/money.js";
 
 export default function Dashboard() {
@@ -108,19 +109,26 @@ export default function Dashboard() {
                     <td>{i.clientName}</td>
                     <td>{formatMinorAmount(i.amountMinor, i.currency)}</td>
                     <td>
-                      <span
-                        className={`px-2 py-0.5 rounded text-xs ${
-                          i.status === "paid"
-                            ? "bg-green-100 text-green-700"
-                            : i.status === "partially_paid"
-                              ? "bg-violet-100 text-violet-700"
-                              : i.status === "unpaid"
-                                ? "bg-amber-100 text-amber-700"
-                                : "bg-slate-100 text-slate-700"
-                        }`}
-                      >
-                        {i.status}
-                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        <span
+                          className={`px-2 py-0.5 rounded text-xs ${
+                            i.status === "paid"
+                              ? "bg-green-100 text-green-700"
+                              : i.status === "partially_paid"
+                                ? "bg-violet-100 text-violet-700"
+                                : i.status === "unpaid"
+                                  ? "bg-amber-100 text-amber-700"
+                                  : "bg-slate-100 text-slate-700"
+                          }`}
+                        >
+                          {i.status}
+                        </span>
+                        {isInvoiceOverdue(i) && (
+                          <span className="px-2 py-0.5 rounded text-xs bg-red-100 text-red-700">
+                            Overdue
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td>
                       <Link

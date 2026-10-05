@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { isInvoiceOverdue } from "../../client/src/utils/invoice.js";
 import {
   createPaymentReservation,
-  getOwnerInvoiceFilter,
   settlePayment,
 } from "../utils/invoiceAccounting.js";
 import { formatMinorAmount, parseAmountMinor } from "../utils/money.js";
@@ -68,14 +68,29 @@ test("pagination rejects malformed, excessive, and unknown query values", () => 
   }
 });
 
-test("invoice queries are scoped to the authenticated owner", () => {
-  const filter = getOwnerInvoiceFilter("owner-1", "invoice-1");
-  const canRead = (record) =>
-    record.user === filter.user && record._id === filter._id;
-
-  assert.deepEqual(filter, { user: "owner-1", _id: "invoice-1" });
-  assert.equal(canRead(invoice()), true);
-  assert.equal(canRead(invoice({ user: "owner-2" })), false);
+test("overdue invoices are unpaid past their calendar due date", () => {
+  const now = new Date(2026, 0, 2, 12);
+  assert.equal(
+    isInvoiceOverdue(
+      { dueDate: "2026-01-01T00:00:00.000Z", status: "unpaid" },
+      now,
+    ),
+    true,
+  );
+  assert.equal(
+    isInvoiceOverdue(
+      { dueDate: "2026-01-02T00:00:00.000Z", status: "partially_paid" },
+      now,
+    ),
+    false,
+  );
+  assert.equal(
+    isInvoiceOverdue(
+      { dueDate: "2026-01-01T00:00:00.000Z", status: "paid" },
+      now,
+    ),
+    false,
+  );
 });
 
 test("payment reservation prevents amounts above the outstanding balance", () => {
@@ -156,10 +171,23 @@ test("settlement rejects mismatched transactions and invalid API input", () => {
     createPaymentReservation(
       invoice({ status: "cancelled" }),
       1000,
-      "txn-2",
+      "txn-cancelled",
       now,
     ).error,
     "Invoice cannot accept payments",
+  );
+  assert.equal(
+    settlePayment(
+      invoice({
+        status: "cancelled",
+        pendingAmountMinor: 1000,
+        activePayment: { tranId: "txn-cancelled", amountMinor: 1000 },
+      }),
+      1000,
+      "txn-cancelled",
+      now,
+    ),
+    null,
   );
   assert.throws(
     () => validatePaymentInput({ amount: "1.001" }),

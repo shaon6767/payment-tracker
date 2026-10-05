@@ -39,6 +39,8 @@ Add a Static Site rewrite rule in Render (`/*` to `/index.html`, action **Rewrit
 
 For invoice-only use, valid SSLCommerz credentials are not required. Checkout needs working sandbox or production credentials and a public `SSL_BASE_URL`. Keep credentials in Render environment settings, not in source control.
 
+Login and registration each allow 10 requests per 15 minutes per client IP.
+
 ## Existing database migration
 
 Back up the database before upgrading. Existing invoices store major-unit floating-point amounts; the current schema stores integer minor units. Run a dry run from `server` with a `MONGO_URI` pointing to the database:
@@ -68,4 +70,6 @@ npm run build
 
 ## Credential hygiene
 
-Never commit `.env` files. Credentials in the repository's prior Git history must be rotated; removing the current `.env` from tracking does not erase old commits. Coordinate any Git-history rewrite with other repository users.
+Never commit `.env` files. Values in the previously committed `.env` must be treated as compromised: rotate the MongoDB database user's password, the JWT signing secret, and the SSLCommerz store ID/password in their respective provider consoles. Update local and hosted environment variables with the replacements; changing `JWT_SECRET` also invalidates existing login tokens.
+
+Removing the current `.env` from tracking does not erase old commits. After rotating credentials, coordinate a Git-history rewrite across all branches and tags with repository collaborators, then force-push the cleaned history. Keep replacement credentials only in local ignored `.env` files or the hosting provider's secret settings.

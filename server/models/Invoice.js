@@ -61,7 +61,7 @@ const invoiceSchema = new mongoose.Schema(
     description: { type: String, default: "", maxlength: 2000 },
     status: {
       type: String,
-      enum: ["unpaid", "partially_paid", "paid", "cancelled"],
+      enum: ["unpaid", "partially_paid", "paid"],
       default: "unpaid",
     },
     paidAt: { type: Date, default: null },
@@ -69,6 +69,10 @@ const invoiceSchema = new mongoose.Schema(
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } },
 );
+
+invoiceSchema.index({ "activePayment.tranId": 1 });
+invoiceSchema.index({ "payments.tranId": 1 });
+invoiceSchema.index({ user: 1, createdAt: -1 });
 
 invoiceSchema.virtual("amount").get(function () {
   return formatMinorAmount(this.amountMinor);

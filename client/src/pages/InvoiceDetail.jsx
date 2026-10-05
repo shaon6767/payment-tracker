@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import api from "../api/axios";
+import { isInvoiceOverdue } from "../utils/invoice.js";
 import { formatMinorAmount } from "../utils/money.js";
 
 export default function InvoiceDetail() {
@@ -62,9 +63,12 @@ export default function InvoiceDetail() {
       partially_paid: "bg-violet-100 text-violet-700",
       unpaid: "bg-amber-100 text-amber-700",
       failed: "bg-red-100 text-red-700",
-      cancelled: "bg-slate-100 text-slate-700",
     }[invoice.status] || "bg-slate-100";
-  const paymentInProgress = invoice.pendingAmountMinor > 0;
+  const reservationExpired =
+    invoice.activePayment?.expiresAt &&
+    new Date(invoice.activePayment.expiresAt) <= new Date();
+  const paymentInProgress =
+    invoice.pendingAmountMinor > 0 && !reservationExpired;
 
   return (
     <div className="max-w-3xl mx-auto p-6">
@@ -82,9 +86,16 @@ export default function InvoiceDetail() {
               {invoice.invoiceNumber}
             </div>
           </div>
-          <span className={`px-3 py-1 rounded text-sm ${statusColor}`}>
-            {invoice.status}
-          </span>
+          <div className="flex gap-2">
+            {isInvoiceOverdue(invoice) && (
+              <span className="px-3 py-1 rounded text-sm bg-red-100 text-red-700">
+                Overdue
+              </span>
+            )}
+            <span className={`px-3 py-1 rounded text-sm ${statusColor}`}>
+              {invoice.status}
+            </span>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-y-4 text-sm mb-8">

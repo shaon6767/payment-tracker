@@ -30,6 +30,7 @@ export function createPaymentReservation(invoice, amountMinor, tranId, expiresAt
 export function settlePayment(invoice, amountMinor, tranId, paidAt) {
   if (
     invoice.status === "cancelled" ||
+    invoice.status === "paid" ||
     invoice.pendingAmountMinor !== amountMinor ||
     invoice.activePayment?.tranId !== tranId ||
     invoice.activePayment?.amountMinor !== amountMinor ||
