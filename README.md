@@ -25,7 +25,7 @@ Create a **Web Service** for the API with:
 - Build command: `npm ci`
 - Start command: `npm start`
 
-Set these environment variables on the API service: `MONGO_URI` (your Atlas connection string), `JWT_SECRET` (a unique random secret of at least 32 characters), `CLIENT_URL` (the deployed client URL), and `SSLCOMMERZ_STORE_ID`, `SSLCOMMERZ_STORE_PASSWD`, `SSLCOMMERZ_IS_SANDBOX`, and `SSL_BASE_URL` when enabling checkout. Use matching sandbox credentials with `SSLCOMMERZ_IS_SANDBOX=true`, or live credentials with `SSLCOMMERZ_IS_SANDBOX=false`. `SSL_BASE_URL` must be the public API service URL for gateway callbacks.
+Set these environment variables on the API service: `MONGO_URI` (your Atlas connection string), `JWT_SECRET` (a unique random secret of at least 32 characters), `CLIENT_URL` (the deployed client URL), and `SSLCOMMERZ_STORE_ID`, `SSLCOMMERZ_STORE_PASSWD`, `SSLCOMMERZ_IS_SANDBOX`, and `SSL_BASE_URL` when enabling checkout. Use matching sandbox credentials with `SSLCOMMERZ_IS_SANDBOX=true` (or unset), or live credentials with `SSLCOMMERZ_IS_SANDBOX=false`. `SSL_BASE_URL` must be the public API service URL for gateway callbacks.
 
 Create a **Static Site** for the client with:
 

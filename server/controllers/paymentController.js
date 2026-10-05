@@ -9,6 +9,7 @@ import {
 } from "../utils/invoiceAccounting.js";
 import { HttpError } from "../utils/httpError.js";
 import { parseAmountMinor } from "../utils/money.js";
+import { isSslCommerzLive } from "../utils/sslcommerzConfig.js";
 import { buildSslCommerzPayload } from "../utils/sslcommerzPayload.js";
 import { validatePaymentInput } from "../utils/validation.js";
 
@@ -188,7 +189,7 @@ export async function initiatePayment(req, res) {
     const sslcz = new SSLCommerzPayment(
       storeId,
       storePassword,
-      process.env.SSLCOMMERZ_IS_SANDBOX !== "false",
+      isSslCommerzLive(process.env.SSLCOMMERZ_IS_SANDBOX),
     );
     const data = buildSslCommerzPayload({
       invoice,
