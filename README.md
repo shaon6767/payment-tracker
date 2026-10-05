@@ -12,7 +12,7 @@ npm ci
 npm run dev
 ```
 
-In another terminal, install the client dependencies and run `npm run dev` from `client`. The default client API URL is `http://localhost:5000/api`; override it with `VITE_API_URL` when needed.
+In another terminal, install the client dependencies and run `npm run dev` from `client`. The default client API URL is `http://localhost:5000/api`; set `VITE_API_URL` to the API service URL when needed. The client adds the `/api` prefix automatically, so either the service origin or an origin already ending in `/api` is accepted.
 
 ## Deploy to Render
 
@@ -33,7 +33,7 @@ Create a **Static Site** for the client with:
 - Build command: `npm ci && npm run build`
 - Publish directory: `dist`
 
-Set `VITE_API_URL` on the Static Site to `<API service URL>/api`. After both services deploy, set the API's `CLIENT_URL` to the exact Static Site URL and redeploy the API. Configure Atlas Network Access to permit connections from the API host (for example, Render's outbound IPs or your applicable network policy).
+Set `VITE_API_URL` on the Static Site to the API service URL (with or without a trailing `/api`); the client adds the `/api` prefix automatically. After both services deploy, set the API's `CLIENT_URL` to the exact Static Site URL and redeploy the API. Configure Atlas Network Access to permit connections from the API host (for example, Render's outbound IPs or your applicable network policy).
 
 Add a Static Site rewrite rule in Render (`/*` to `/index.html`, action **Rewrite**) so client-side routes continue to work after a browser refresh.
 
