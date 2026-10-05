@@ -11,6 +11,16 @@ function validateInvoiceId(id) {
   }
 }
 
+async function clearExpiredReservation(userId, invoiceId) {
+  await Invoice.updateOne(
+    {
+      ...getOwnerInvoiceFilter(userId, invoiceId),
+      "activePayment.expiresAt": { $lte: new Date() },
+    },
+    { $set: { pendingAmountMinor: 0, activePayment: null } },
+  );
+}
+
 export async function listInvoices(req, res) {
   const filter = getOwnerInvoiceFilter(req.user._id);
   const { page, limit, skip } = parsePagination(req.query);
@@ -97,6 +107,7 @@ export async function createInvoice(req, res) {
 
 export async function updateInvoice(req, res) {
   validateInvoiceId(req.params.id);
+  await clearExpiredReservation(req.user._id, req.params.id);
   const updates = validateInvoiceInput(req.body, { partial: true });
   const filter = getOwnerInvoiceFilter(req.user._id, req.params.id);
   if (updates.amountMinor !== undefined || updates.currency !== undefined) {
@@ -123,6 +134,7 @@ export async function updateInvoice(req, res) {
 
 export async function deleteInvoice(req, res) {
   validateInvoiceId(req.params.id);
+  await clearExpiredReservation(req.user._id, req.params.id);
   const filter = {
     ...getOwnerInvoiceFilter(req.user._id, req.params.id),
     paidAmountMinor: 0,

@@ -1,6 +1,6 @@
 import "dotenv/config";
 import mongoose from "mongoose";
-import app from "./app.js";
+import { createApp } from "./app.js";
 
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI;
@@ -9,6 +9,8 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
   throw new Error("JWT_SECRET must contain at least 32 characters");
 }
 if (!MONGO_URI) throw new Error("MONGO_URI must be configured");
+
+const app = createApp();
 
 mongoose
   .connect(MONGO_URI)

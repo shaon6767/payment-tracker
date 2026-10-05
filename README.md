@@ -39,7 +39,19 @@ Add a Static Site rewrite rule in Render (`/*` to `/index.html`, action **Rewrit
 
 For invoice-only use, valid SSLCommerz credentials are not required. Checkout needs working sandbox or production credentials and a public `SSL_BASE_URL`. Keep credentials in Render environment settings, not in source control.
 
-Login and registration each allow 10 requests per 15 minutes per client IP.
+Registration allows 10 requests per 15 minutes per client IP. Login allows 10
+failed attempts in that period; successful logins do not count toward the limit.
+
+## Known limitations
+
+If a payment reservation expires and the customer starts a new checkout, a
+payment completed through the old gateway session is rejected. Only the
+currently active transaction can be settled.
+
+The automated payment and API route tests stub Mongoose model methods. They do
+not use a real MongoDB test database, so database-level behavior still needs
+verification in a deployment or a separately configured integration-test
+environment.
 
 ## Existing database migration
 
@@ -64,6 +76,7 @@ cd server
 npm test
 
 cd ../client
+node --test src/utils/invoice.test.js
 npm run lint
 npm run build
 ```

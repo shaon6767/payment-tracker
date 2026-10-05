@@ -18,13 +18,14 @@ function migrationUpdate(invoice) {
   const amountMinor = toMinorUnits(invoice.amount);
   if (
     amountMinor === null ||
-    (invoice.currency && !["BDT", "USD"].includes(invoice.currency))
+    (invoice.currency && !["BDT", "USD"].includes(invoice.currency)) ||
+    (invoice.status != null &&
+      !["unpaid", "partially_paid", "paid"].includes(invoice.status))
   ) {
     return null;
   }
 
   const wasPaid = invoice.status === "paid";
-  const wasCancelled = invoice.status === "cancelled";
   return {
     updateOne: {
       filter: { _id: invoice._id, amountMinor: { $exists: false } },
@@ -34,7 +35,7 @@ function migrationUpdate(invoice) {
           paidAmountMinor: wasPaid ? amountMinor : 0,
           pendingAmountMinor: 0,
           payments: [],
-          status: wasPaid ? "paid" : wasCancelled ? "cancelled" : "unpaid",
+          status: wasPaid ? "paid" : "unpaid",
           paidAt: wasPaid ? invoice.paidAt || invoice.updatedAt : null,
         },
         $unset: { amount: "" },

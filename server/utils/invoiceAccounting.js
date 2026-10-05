@@ -6,7 +6,7 @@ export function outstandingAmountMinor(invoice) {
 
 export function createPaymentReservation(invoice, amountMinor, tranId, expiresAt) {
   const outstanding = outstandingAmountMinor(invoice);
-  if (invoice.status === "cancelled" || invoice.status === "paid") {
+  if (invoice.status === "paid") {
     return { error: "Invoice cannot accept payments" };
   }
   if (invoice.pendingAmountMinor > 0) {
@@ -29,7 +29,6 @@ export function createPaymentReservation(invoice, amountMinor, tranId, expiresAt
 
 export function settlePayment(invoice, amountMinor, tranId, paidAt) {
   if (
-    invoice.status === "cancelled" ||
     invoice.status === "paid" ||
     invoice.pendingAmountMinor !== amountMinor ||
     invoice.activePayment?.tranId !== tranId ||

@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isInvoiceOverdue } from "../../client/src/utils/invoice.js";
 import {
   createPaymentReservation,
   settlePayment,
@@ -66,31 +65,6 @@ test("pagination rejects malformed, excessive, and unknown query values", () => 
   ]) {
     assert.throws(() => parsePagination(query), { status: 400 });
   }
-});
-
-test("overdue invoices are unpaid past their calendar due date", () => {
-  const now = new Date(2026, 0, 2, 12);
-  assert.equal(
-    isInvoiceOverdue(
-      { dueDate: "2026-01-01T00:00:00.000Z", status: "unpaid" },
-      now,
-    ),
-    true,
-  );
-  assert.equal(
-    isInvoiceOverdue(
-      { dueDate: "2026-01-02T00:00:00.000Z", status: "partially_paid" },
-      now,
-    ),
-    false,
-  );
-  assert.equal(
-    isInvoiceOverdue(
-      { dueDate: "2026-01-01T00:00:00.000Z", status: "paid" },
-      now,
-    ),
-    false,
-  );
 });
 
 test("payment reservation prevents amounts above the outstanding balance", () => {
@@ -169,9 +143,9 @@ test("settlement rejects mismatched transactions and invalid API input", () => {
   assert.equal(settlePayment(pendingInvoice, 2000, "txn-other", now), null);
   assert.equal(
     createPaymentReservation(
-      invoice({ status: "cancelled" }),
+      invoice({ status: "paid" }),
       1000,
-      "txn-cancelled",
+      "txn-paid",
       now,
     ).error,
     "Invoice cannot accept payments",
@@ -179,12 +153,12 @@ test("settlement rejects mismatched transactions and invalid API input", () => {
   assert.equal(
     settlePayment(
       invoice({
-        status: "cancelled",
+        status: "paid",
         pendingAmountMinor: 1000,
-        activePayment: { tranId: "txn-cancelled", amountMinor: 1000 },
+        activePayment: { tranId: "txn-paid", amountMinor: 1000 },
       }),
       1000,
-      "txn-cancelled",
+      "txn-paid",
       now,
     ),
     null,
@@ -197,8 +171,20 @@ test("settlement rejects mismatched transactions and invalid API input", () => {
     () => validateInvoiceInput({ amount: "10.00", status: "paid" }, { partial: true }),
     { status: 400 },
   );
+  assert.doesNotThrow(() =>
+    validateRegistration({
+      name: "User",
+      email: "user@example.com",
+      password: "12345678",
+    }),
+  );
   assert.throws(
-    () => validateRegistration({ name: "User", email: "bad", password: "123456" }),
+    () =>
+      validateRegistration({
+        name: "User",
+        email: "user@example.com",
+        password: "1234567",
+      }),
     { status: 400 },
   );
 });

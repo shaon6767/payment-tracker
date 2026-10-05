@@ -28,10 +28,10 @@ export function validateRegistration(body) {
   if (!email) throw new HttpError(400, "A valid email is required");
   if (
     typeof password !== "string" ||
-    password.length < 6 ||
+    password.length < 8 ||
     Buffer.byteLength(password, "utf8") > 72
   ) {
-    throw new HttpError(400, "Password must be 6-72 bytes");
+    throw new HttpError(400, "Password must be 8-72 bytes");
   }
 
   return { name, email, password };

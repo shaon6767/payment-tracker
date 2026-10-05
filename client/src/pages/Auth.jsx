@@ -70,7 +70,10 @@ export default function Auth() {
           <input
             type="password"
             required
-            placeholder="Password (min 6 chars)"
+            minLength={mode === "register" ? 8 : undefined}
+            placeholder={
+              mode === "register" ? "Password (min 8 chars)" : "Password"
+            }
             className="w-full px-3 py-2 border rounded"
             value={form.password}
             onChange={(e) => setForm({ ...form, password: e.target.value })}

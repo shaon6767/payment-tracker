@@ -33,5 +33,3 @@ export function createApp() {
   app.use(handleError);
   return app;
 }
-
-export default createApp();
