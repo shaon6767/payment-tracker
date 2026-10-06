@@ -1,88 +1,67 @@
 # Payment Tracker
 
-Payment Tracker is a React client and Express/MongoDB API for managing invoices and recording full or partial payments through SSLCommerz.
+Payment Tracker helps freelancers and small businesses create invoices, track balances, and record payments in one place. It supports full and partial checkout through SSLCommerz, with payment confirmation handled by the API.
 
-## Run locally
+## Screenshots
 
-Copy `server/.env.example` to `server/.env`, set a unique `JWT_SECRET` of at least 32 characters and `MONGO_URI` to a reachable MongoDB instance, then run:
+No application screenshots are currently included in the repository.
+
+## Features
+
+- Register and sign in to a private account.
+- Create invoices in BDT or USD, with client details, descriptions, and due dates.
+- Review paginated invoices, payment status, outstanding balances, and overdue invoices.
+- See dashboard totals and collected revenue grouped by currency.
+- Start full or partial SSLCommerz payments and view confirmed results.
+
+## How It Works
+
+The React client sends authenticated requests to an Express API. The API stores users and invoices in MongoDB and scopes invoice access to the signed-in user. For checkout, it reserves the requested balance, redirects the customer to SSLCommerz, then validates payment callbacks with the gateway before updating the invoice.
+
+## Tech Stack
+
+React, React Router, Vite, Tailwind CSS, Node.js, Express, MongoDB/Mongoose, JWT, bcrypt, and SSLCommerz.
+
+## Challenges & Solutions
+
+- **Accurate currency calculations:** Invoice amounts are stored as integer minor units instead of floating-point values, avoiding rounding errors.
+- **Reliable payment confirmation:** The API validates transactions with SSLCommerz before settlement and handles repeated callbacks idempotently.
+- **Concurrent checkouts:** A time-limited payment reservation prevents multiple active checkouts from using the same invoice balance.
+
+## Limitations
+
+- Tokens are stored in browser `localStorage`.
+- Checkout requires SSLCommerz credentials and a callback URL reachable by the gateway.
+- Automated route tests use MongoDB and gateway test doubles; they do not cover live integrations.
+- Password reset, email verification, and a payer-facing invoice portal are not implemented.
+
+## Setup
+
+**Prerequisites:** Node.js 20.19+ or 22.12+, npm, and a reachable MongoDB instance.
+
+Install dependencies from the project root:
+
+```sh
+npm ci --prefix server
+npm ci --prefix client
+```
+
+Copy `server/.env.example` to `server/.env`. Set `MONGO_URI` and a unique `JWT_SECRET` of at least 32 characters. SSLCommerz credentials are optional unless using checkout. For local development, the API defaults to port `5000` and the client uses `http://localhost:5173`.
+
+Run the API and client in separate terminals:
 
 ```sh
 cd server
-npm ci
 npm run dev
 ```
 
-In another terminal, install the client dependencies and run `npm run dev` from `client`. The default client API URL is `http://localhost:5000/api`; set `VITE_API_URL` to the API service URL when needed. The client adds the `/api` prefix automatically, so either the service origin or an origin already ending in `/api` is accepted.
-
-## Deploy to Render
-
-Deploy the API and client as separate native Render services; Docker is not required.
-
-Create a **Web Service** for the API with:
-
-- Root directory: `server`
-- Runtime: `Node`
-- Build command: `npm ci`
-- Start command: `npm start`
-
-Set these environment variables on the API service: `MONGO_URI` (your Atlas connection string), `JWT_SECRET` (a unique random secret of at least 32 characters), `CLIENT_URL` (the deployed client URL), and `SSLCOMMERZ_STORE_ID`, `SSLCOMMERZ_STORE_PASSWD`, `SSLCOMMERZ_IS_SANDBOX`, and `SSL_BASE_URL` when enabling checkout. Use matching sandbox credentials with `SSLCOMMERZ_IS_SANDBOX=true` (or unset), or live credentials with `SSLCOMMERZ_IS_SANDBOX=false`. `SSL_BASE_URL` must be the public API service URL for gateway callbacks.
-
-Create a **Static Site** for the client with:
-
-- Root directory: `client`
-- Build command: `npm ci && npm run build`
-- Publish directory: `dist`
-
-Set `VITE_API_URL` on the Static Site to the API service URL (with or without a trailing `/api`); the client adds the `/api` prefix automatically. After both services deploy, set the API's `CLIENT_URL` to the exact Static Site URL and redeploy the API. Configure Atlas Network Access to permit connections from the API host (for example, Render's outbound IPs or your applicable network policy).
-
-Add a Static Site rewrite rule in Render (`/*` to `/index.html`, action **Rewrite**) so client-side routes continue to work after a browser refresh.
-
-For invoice-only use, valid SSLCommerz credentials are not required. Checkout needs working sandbox or production credentials and a public `SSL_BASE_URL`. Keep credentials in Render environment settings, not in source control.
-
-Registration allows 10 requests per 15 minutes per client IP. Login allows 10
-failed attempts in that period; successful logins do not count toward the limit.
-
-## Known limitations
-
-If a payment reservation expires and the customer starts a new checkout, a
-payment completed through the old gateway session is rejected. Only the
-currently active transaction can be settled.
-
-The automated payment and API route tests stub Mongoose model methods. They do
-not use a real MongoDB test database, so database-level behavior still needs
-verification in a deployment or a separately configured integration-test
-environment.
-
-## Existing database migration
-
-Back up the database before upgrading. Existing invoices store major-unit floating-point amounts; the current schema stores integer minor units. Run a dry run from `server` with a `MONGO_URI` pointing to the database:
-
 ```sh
-npm run migrate:money
+cd client
+npm run dev
 ```
 
-If the report is clean, apply the idempotent migration:
+Set `VITE_API_URL` when the API is not at its default local URL. For hosted checkout, configure SSLCommerz credentials and set `SSL_BASE_URL` to the public API URL.
 
-```sh
-npm run migrate:money -- --apply
-```
+## Deployment
 
-Do not start the updated API against an existing database until migration is complete. The migration script was not run as part of development.
-
-## Checks
-
-```sh
-cd server
-npm test
-
-cd ../client
-node --test src/utils/invoice.test.js
-npm run lint
-npm run build
-```
-
-## Credential hygiene
-
-Never commit `.env` files. Values in the previously committed `.env` must be treated as compromised: rotate the MongoDB database user's password, the JWT signing secret, and the SSLCommerz store ID/password in their respective provider consoles. Update local and hosted environment variables with the replacements; changing `JWT_SECRET` also invalidates existing login tokens.
-
-Removing the current `.env` from tracking does not erase old commits. After rotating credentials, coordinate a Git-history rewrite across all branches and tags with repository collaborators, then force-push the cleaned history. Keep replacement credentials only in local ignored `.env` files or the hosting provider's secret settings.
+The client includes `client/vercel.json` with a rewrite for client-side routes. Build it with `npm run build` from `client`; deploy the API separately with `npm start` from `server` and provide its MongoDB and environment configuration.
