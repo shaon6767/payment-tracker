@@ -4,7 +4,15 @@ Payment Tracker helps freelancers and small businesses create invoices, track ba
 
 ## Screenshots
 
-No application screenshots are currently included in the repository.
+The hosted SSLCommerz checkout opens after a customer starts payment from an invoice. The screenshots below show the sandbox checkout and the invoice payment page.
+
+### SSLCommerz Checkout
+
+![SSLCommerz sandbox checkout after redirect from the application](docs/screenshots/sslcommerz-checkout.png)
+
+### Invoice Payment Page
+
+![Invoice details and the amount field for making a full or partial payment](docs/screenshots/invoice-payment.png)
 
 ## Features
 
